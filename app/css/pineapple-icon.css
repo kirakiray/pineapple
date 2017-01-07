@@ -1,0 +1,135 @@
+[class*=pineapple-icon] {
+    display: inline-block;
+    font-size: 16px;
+    width: 15px;
+    height: 15px;
+}
+
+.pineapple-icon-play {
+    position: relative;
+    display: inline-block;
+    /* width: 15px;
+    height: 15px; */
+    transition: transform ease .5s;
+}
+
+.pineapple-icon-play:after,
+.pineapple-icon-play:before {
+    position: absolute;
+    display: block;
+    width: 0;
+    height: 0;
+    top: 2px;
+    left: 2px;
+    border-top: 3px solid transparent;
+    border-right: 6px solid transparent;
+    border-left: 6px solid #83bd39;
+    border-bottom: 3px solid #83bd39;
+    content: "";
+    transition: all ease .1s;
+}
+
+.pineapple-icon-play:after {
+    top: 8px;
+    left: 2px;
+    border-bottom: 3px solid transparent;
+    border-right: 6px solid transparent;
+    border-left: 6px solid #83bd39;
+    border-top: 3px solid #83bd39;
+}
+
+.pineapple-icon-pause {
+    position: relative;
+    display: inline-block;
+    /* width: 15px;
+    height: 15px; */
+    transform: rotateZ(-90deg);
+    transition: transform ease .5s;
+}
+
+.pineapple-icon-pause:after,
+.pineapple-icon-pause:before {
+    position: absolute;
+    display: block;
+    width: 0;
+    height: 0;
+    top: 3px;
+    left: 2px;
+    border-top: 2px solid #83bd39;
+    border-right: 6px solid #83bd39;
+    border-left: 6px solid #83bd39;
+    border-bottom: 1px solid #83bd39;
+    content: "";
+    transition: all ease .1s;
+}
+
+.pineapple-icon-pause:after {
+    top: 9px;
+}
+
+.pineapple-icon-play.pineapple-no-color:before {
+    border-left-color: #666;
+    border-bottom-color: #666;
+}
+
+.pineapple-icon-play.pineapple-no-color:after {
+    border-left-color: #666;
+    border-top-color: #666;
+}
+
+.pineapple-icon-pause.pineapple-no-color:after,
+.pineapple-icon-pause.pineapple-no-color:before {
+    border-top-color: #666;
+    border-right-color: #666;
+    border-left-color: #666;
+    border-bottom-color: #666;
+}
+
+.pineapple-icon-error {
+    position: relative;
+    line-height: 15px;
+    border-radius: 8px;
+    text-align: center;
+    color: #fff;
+    background-color: #d6313a;
+}
+
+.pineapple-icon-error:before {
+    display: block;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    line-height: 15px;
+    font-size: 10px;
+    content: "!";
+}
+
+.pineapple-icon-warn {
+    position: relative;
+    line-height: 15px;
+    text-align: center;
+    color: #fff;
+}
+
+.pineapple-icon-warn:before {
+    display: block;
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    border-bottom: 13px solid #ffb033;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+}
+
+.pineapple-icon-warn:after {
+    content: "!";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    font-size: 9px;
+}

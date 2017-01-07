@@ -1,0 +1,6 @@
+{
+    "name": "正文TPL辅助开发工具",
+    "version": "1.0.0",
+    "main": "main.js",
+    "descript": "将繁琐的tpl模板制作中解放出生产力的工具"
+}
