@@ -1,14 +1,18 @@
 const http = require('http');
-// const https = require('https');
 const urltool = require('url');
-const pfs = require('./p-fs');
 const fs = require('fs');
-const pzlib = require('./p-zlib');
+const zlib = require('zlib');
+const util = require('util');
+
+// promise
+const gzip = util.promisify(zlib.gzip);
+const readFile = util.promisify(fs.readFile);
+const stat = util.promisify(fs.stat);
 
 //PieServer
 var PieServer = function() {
     //web根目录地址
-    let rootdir = './httptestroot';
+    let rootdir = '/Users/pikay/开发/PrivateGit/前端工具/转图片转base64';
 
     //空目录的引用文件名
     let indexFileName = "index.html";
@@ -84,14 +88,11 @@ var PieServer = function() {
             if (mime) {
                 headData['Content-Type'] = mime;
             }
-            // if (suffix == ".appcache") {
-            //     delete headData['Cache-Control'];
-            // }
         }
 
         //图片的话断流返回数据
         if (mime && mime.search('image') > -1) {
-            let imgstat = await pfs.stat(pathname);
+            let imgstat = await stat(pathname);
             //存在图片才返回
             if (imgstat) {
                 //设置文件大小
@@ -124,7 +125,7 @@ var PieServer = function() {
             }
         } else {
             //获取文件
-            let file = await pfs.readFile(pathname);
+            let file = await readFile(pathname);
 
             //存在文件
             if (file) {
@@ -133,7 +134,7 @@ var PieServer = function() {
                 let acceptCode = headers['accept-encoding'];
                 if (acceptCode && acceptCode.search('gzip') > -1) {
                     //转换gzip
-                    file = await pzlib.gzip(file);
+                    file = await gzip(file);
 
                     //添加gz压缩头信息
                     headData['Content-Encoding'] = 'gzip';
