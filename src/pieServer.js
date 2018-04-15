@@ -3,6 +3,7 @@ const urltool = require('url');
 const fs = require('fs');
 const zlib = require('zlib');
 const util = require('util');
+const qs = require('qs');
 
 // promise
 const gzip = util.promisify(zlib.gzip);
@@ -10,34 +11,43 @@ const readFile = util.promisify(fs.readFile);
 const stat = util.promisify(fs.stat);
 
 //PieServer
-var PieServer = function() {
+const PieServer = function () {
     //web根目录地址
-    let rootdir = '/Users/pikay/开发/PrivateGit/前端工具/转图片转base64';
+    let rootdir = '/';
 
     //空目录的引用文件名
     let indexFileName = "index.html";
 
+    // 路径映射
+    let tapDatabase = {};
+
     Object.defineProperties(this, {
         "rootdir": {
-            set: (val) => {
+            set(val) {
                 rootdir = val
             },
-            get: () => {
+            get() {
                 return rootdir;
             }
         },
         "indexName": {
-            set: (val) => {
+            set(val) {
                 indexFileName = val;
             },
-            get: () => {
+            get() {
                 return indexFileName;
+            }
+        },
+        "tapDatabase": {
+            get() {
+                return tapDatabase;
             }
         }
     });
 
     //MIMEMap类型返回
     let mimeMap = this.mimeMap = {
+        ".mp4": "video/mp4",
         ".bmp": "image/bmp",
         ".png": "image/png",
         ".gif": "image/gif",
@@ -55,27 +65,110 @@ var PieServer = function() {
     let server = this.server = http.createServer();
 
     //监听变动
-    server.on('request', async(request, respone) => {
+    server.on('request', async (request, respone) => {
+        let {
+            url,
+            headers
+        } = request;
+
+        //返回头
+        let responeHeaders = {
+            // 服务器类型
+            'Server': "PieServer",
+            "Access-Control-Allow-Origin": "*",
+            // "Access-Control-Allow-Headers": "x-requested-with,content-type"
+            //添加max-age（http1.1，一直缓存用；免去使用Etag和lastModify判断，只用版本号控制）
+            // 'Cache-Control': "max-age=315360000"
+        };
+
+        if (request.method == "OPTIONS") {
+            responeHeaders["Access-Control-Allow-Headers"] = "x-requested-with,content-type";
+            respone.writeHead(200, responeHeaders);
+            respone.end("");
+            return;
+        }
+
         //转换成url对象，方便后续操作
-        let urlObj = urltool.parse(request.url);
+        let urlData = urltool.parse(url);
 
         //获取pathname，并修正文件地址
-        let { pathname } = urlObj;
+        let {
+            pathname
+        } = urlData;
+
+        let tarFunc = tapDatabase[pathname];
+        if (tarFunc) {
+            let contentType = headers['content-type'];
+            let requestInfo = {
+                urlData,
+                responeHeaders
+            };
+
+            if (request.method === "POST") {
+                // 判断是哪种编码
+                let isUrlencoded = contentType.indexOf('x-www-form-urlencoded') > -1;
+                let isJsonencode = contentType.indexOf('application/json') > -1;
+                let isFormData = contentType.indexOf('multipart/form-data') > -1;
+                let isTextXml = contentType.indexOf('text/xml') > -1;
+
+                // 判断请求类型
+                if (isUrlencoded || isJsonencode) {
+                    // 获取响应回来的数据
+                    let responeData = await new Promise(res => {
+                        let data = "";
+                        request.on('data', (chunk) => {
+                            data += chunk;
+                        });
+                        request.on('end', (chunk) => {
+                            res(data);
+                        });
+                    });
+
+                    // 根据类型进行转换
+                    if (isJsonencode) {
+                        responeData = JSON.parse(responeData);
+                    } else if (isUrlencoded) {
+                        responeData = qs.parse(responeData);
+                    }
+
+
+                    requestInfo.data = responeData;
+                }
+            } else if (request.method === "GET") {
+                urlData.query && (requestInfo.data = qs.parse(urlData.query));
+            }
+
+            let responseText = await tarFunc(request, requestInfo);
+
+            if (typeof responseText === "object") {
+                responseText = JSON.stringify(responseText);
+                responeHeaders['Content-Type'] = 'application/json';
+            }
+
+            //判断非图片
+            //判断能接受gzip类型
+            let acceptCode = headers['accept-encoding'];
+            if (acceptCode && acceptCode.search('gzip') > -1) {
+                //转换gzip
+                responseText = await gzip(responseText);
+
+                //添加gz压缩头信息
+                responeHeaders['Content-Encoding'] = 'gzip';
+            }
+
+            //设置文件大小
+            responeHeaders['Content-Length'] = responseText.length;
+
+            //存在文件，就返回数据
+            respone.writeHead(200, responeHeaders);
+            respone.end(responseText);
+            return;
+        }
+
         if (/\/$/.test(pathname)) {
             pathname += indexFileName;
         }
         pathname = rootdir + pathname;
-
-        //请求头
-        let headers = request.headers;
-
-        //返回头
-        let headData = {
-            // 服务器类型
-            'Server': "PieServer",
-            //添加max-age（http1.1，一直缓存用；免去使用Etag和lastModify判断，只用版本号控制）
-            // 'Cache-Control': "max-age=315360000"
-        };
 
         //获取后缀并设置返回类型
         let suffix = /(.+)(\..+)$/g.exec(pathname.toLowerCase());
@@ -85,72 +178,89 @@ var PieServer = function() {
         let mime;
         if (suffix) {
             mime = mimeMap[suffix];
-            if (mime) {
-                headData['Content-Type'] = mime;
-            }
         }
 
-        //图片的话断流返回数据
-        if (mime && mime.search('image') > -1) {
-            let imgstat = await stat(pathname);
+        if (mime) {
+            responeHeaders['Content-Type'] = mime;
+
+            //图片的话断流返回数据
+            let fileStat;
+
+            try {
+                fileStat = await stat(pathname);
+            } catch (e) {}
+
             //存在图片才返回
-            if (imgstat) {
-                //设置文件大小
-                headData['Content-Length'] = imgstat.size;
+            if (fileStat) {
+                let {
+                    range
+                } = headers;
 
-                //写入头数据
-                respone.writeHead(200, headData);
-                let readStream = fs.createReadStream(pathname);
+                // 文件大小
+                let filesize = fileStat.size;
 
-                readStream.on('data', (chunk) => {
-                    if (respone.write(chunk) === false) {
-                        // 如果没有写完，暂停读取流
-                        readStream.pause();
+                // 返回数据长度
+                let responseContentLength = filesize;
+
+                // 文件流的范围
+                let start = 0;
+                let end = filesize - 1;
+
+                // 状态码
+                let headStat = 200;
+
+                // 是视频文件就添加 Content-Range
+                // 根据所需长度返回内容
+                if (range) {
+                    let rangeArr = range.match(/bytes=(.+?)-/);
+                    if (1 in rangeArr) {
+                        // 修正start
+                        start = parseInt(rangeArr[1]);
+                        if (start < 0) {
+                            start = 0;
+                        }
+                        if (start > filesize) {
+                            start = filesize - 2;
+                        }
+
+                        // 修正end
+                        end = start + 5242880;
+                        if (end >= filesize) {
+                            end = filesize - 1;
+                        }
+
+                        // 修正返回长度
+                        responseContentLength = end - start + 1;
+
+                        // 修正状态码
+                        headStat = 206;
                     }
-                });
 
-                respone.on('drain', () => {
-                    // 写完后，继续读取
-                    readStream.resume();
-                });
+                    Object.assign(responeHeaders, {
+                        'Accept-Ranges': 'bytes',
+                        'Content-Range': `bytes ${start}-${end}/${filesize}`
+                    });
+                }
 
-                //获取数据结束
-                readStream.on('end', () => {
-                    respone.end();
-                });
+                // 设置返回长度
+                responeHeaders['Content-Length'] = responseContentLength;
+
+                // 写入头数据
+                respone.writeHead(headStat, responeHeaders);
+                // 返回文件流
+                fs.createReadStream(pathname, {
+                    start,
+                    end
+                }).pipe(respone);
             } else {
                 //不存在就返回错误
                 respone.writeHead(404);
                 respone.end("error : no data");
             }
         } else {
-            //获取文件
-            let file = await readFile(pathname);
-
-            //存在文件
-            if (file) {
-                //判断非图片
-                //判断能接受gzip类型
-                let acceptCode = headers['accept-encoding'];
-                if (acceptCode && acceptCode.search('gzip') > -1) {
-                    //转换gzip
-                    file = await gzip(file);
-
-                    //添加gz压缩头信息
-                    headData['Content-Encoding'] = 'gzip';
-                }
-
-                //设置文件大小
-                headData['Content-Length'] = file.length;
-
-                //存在文件，就返回数据
-                respone.writeHead(200, headData);
-                respone.end(file);
-            } else {
-                //不存在就返回错误
-                respone.writeHead(404);
-                respone.end("error : no data");
-            }
+            //不存在就返回错误
+            respone.writeHead(404);
+            respone.end("error : no data");
         }
 
         console.log(pathname, request);
@@ -159,19 +269,23 @@ var PieServer = function() {
 
 PieServer.prototype = {
     //监听端口
-    listen: function(port) {
+    listen(port) {
         this.server.listen(port);
     },
     //事件监听
-    on: function() {
-        this.server.on.apply(this.server, arguments);
+    on(...args) {
+        this.server.on.apply(this.server, args);
+    },
+    // tap路径监听
+    tap(url, callback) {
+        this.tapDatabase[url] = callback;
     }
 };
 
 Object.defineProperties(PieServer.prototype, {
     //获取监听接口
     "port": {
-        get: function() {
+        get: function () {
             return this.server.address().port;
         }
     }
